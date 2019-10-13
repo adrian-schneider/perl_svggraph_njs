@@ -192,12 +192,25 @@ sub initialize {
 <iframe id="graph" scrolling="no" width="$sw" height="$sh" frameBorder="0" src="./graph.html">
 </iframe>
 <script>
+function askGraphChanged() {
+  if (! document.getElementById("hold").checked) {
+    var xhttp = new XMLHttpRequest();
+    xhttp.onreadystatechange = function() {
+      if (this.readyState == 4 && this.status == 200) {
+        if (xhttp.responseText.indexOf('T') != -1) {
+          reload();
+        }
+      }
+    };
+    xhttp.open('GET', '/ask_graph_changed', true);
+    xhttp.send();
+  }
+}
 function reload() {
   var container = document.getElementById("graph");
-  var content = container.src;
-  if (! document.getElementById("hold").checked) container.src = content;
+  container.src = container.src;
 }
-setInterval(reload, $redrawinterval);
+setInterval(askGraphChanged, $redrawinterval);
 </script>
 </body></html>
     );
