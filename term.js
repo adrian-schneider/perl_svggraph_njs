@@ -2,6 +2,8 @@ var g_http = require('http');
 var g_fs = require('fs');
 var g_url = require('url');
 
+var g_sockets = {}, g_nextSocketId = 0;
+
 var g_port = 8081;
 var g_httpServer = null;
 
@@ -14,7 +16,10 @@ var g_timerId = null;
 
 var g_watchedFileChanged = false;
 var g_watchedFilename = '';
-var g_root = '';
+var g_rootPath = './';
+
+const INDEXFILENAME = '.svggraph/index.html';
+const GRAPHFILENAME = '.svggraph/graph.html';
 
 function log(verbosity, text) {
   if (verbosity <= g_verbosityThsld) {
@@ -35,10 +40,6 @@ function statSync(filename) {
   catch(err) {
     return null;
   }
-}
-
-function needsWatch(filename) {
-  return (g_watchedFilename == '') && (filename.indexOf('graph.htm') != -1);
 }
 
 function processFileChangeHandler(filename) {
@@ -66,53 +67,47 @@ function rerunDelayedHandler(handler, filename, millis) {
 }
 
 function establishFileWatch(handler, filename) {
-  if (g_fileWatcher) {
-    g_fileWatcher.close();
-  }
-  g_watchedFileChanged = false;
-  g_watchedFilename = filename;
-  g_fileWatcher = g_fs.watch(filename, (event, eventFilename) => {
-    if (eventFilename) {
-      // Debounce and dealy:
-      // Any file change event occuring within the timeout period
-      // prolongs that timeout period by the same amount.
-      // Only if no further event occurs during that time, the last
-      // event is finally getting handled.
-      rerunDelayedHandler(handler, filename, 200);
+  if (g_watchedFilename == '') {
+    if (g_fileWatcher) {
+      g_fileWatcher.close();
     }
-  });
-  log(VINFO, `File watch established on: ${filename}`);
-}
-
-function onceEstablishFileWatch(handler, filename) {
-  if (needsWatch(filename)) {
-    establishFileWatch(processFileChangeHandler, filename);
+    g_watchedFileChanged = false;
+    g_watchedFilename = filename;
+    g_fileWatcher = g_fs.watch(filename, (event, eventFilename) => {
+      if (eventFilename) {
+        // Debounce and dealy:
+        // Any file change event occuring within the timeout period
+        // prolongs that timeout period by the same amount.
+        // Only if no further event occurs during that time, the last
+        // event is finally getting handled.
+        rerunDelayedHandler(handler, filename, 200);
+      }
+    });
+    log(VINFO, `File watch established on: ${filename}`);
   }
 }
 
 // https://stackoverflow.com/questions/14626636/how-do-i-shutdown-a-node-js-https-server-immediately
-var sockets = {}, nextSocketId = 0;
-
 function maintainSocketHash(server) {
   // Maintain a hash of all connected sockets.
   server.on('connection', function (socket) {
     // Add a newly connected socket.
-    var socketId = nextSocketId++;
-    sockets[socketId] = socket;
+    var socketId = g_nextSocketId++;
+    g_sockets[socketId] = socket;
     log(VDEBUG2, `Socket ${socketId} opened.`);
 
     // Remove the socket when it closes.
     socket.on('close', function () {
       log(VDEBUG2, `Socket ${socketId} closed.`);
-      delete sockets[socketId];
+      delete g_sockets[socketId];
     });
   });
 }
 
 function destroyOpenSockets() {
-  for (var socketId in sockets) {
+  for (var socketId in g_sockets) {
     log(VDEBUG2, `Socket ${socketId} destroyed.`);
-    sockets[socketId].destroy();
+    g_sockets[socketId].destroy();
   }
 }
 
@@ -125,8 +120,18 @@ function exitServer() {
   process.exitCode = 1;
 }
 
-function doServe(pathname) {
-  return pathname.indexOf('/.svggraph') == 0;
+function serveFile(filename, response) {
+  g_fs.readFile(filename, function (err, data) {
+    if (err) {
+      log(VERROR, err);
+      response.writeHead(404, {'Content-Type': 'text/html'});
+    }
+    else {
+      response.writeHead(200, {'Content-Type': 'text/html'});
+      response.write(data.toString());
+    }
+    response.end();
+  });
 }
 
 function handleRequest(request, response) {
@@ -145,21 +150,13 @@ function handleRequest(request, response) {
     response.write(hasWatchedFileChanged() ? 'T' : 'F');
     response.end();
   }
-  else if (doServe(pathname)) {
-    var fpath = pathname.substr(1);
-    onceEstablishFileWatch(processFileChangeHandler, fpath);
-
-    g_fs.readFile(fpath, function (err, data) {
-      if (err) {
-        log(VERROR, err);
-        response.writeHead(404, {'Content-Type': 'text/html'});
-      }
-      else {
-        response.writeHead(200, {'Content-Type': 'text/html'});
-        response.write(data.toString());
-      }
-      response.end();
-    });
+  else if (pathname == '/') {
+    serveFile(g_rootPath + INDEXFILENAME, response);
+  }
+  else if (pathname == '/graph.html') {
+    var filename = g_rootPath + GRAPHFILENAME;
+    establishFileWatch(processFileChangeHandler, filename);
+    serveFile(filename, response);
   }
   else {
     log(VINFO, `Ignoring ${pathname}.`);
