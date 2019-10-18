@@ -8,7 +8,7 @@ var g_port = 8081;
 var g_httpServer = null;
 
 const VOFF = 0, VERROR = 1, VWARN = 2, VINFO = 3, VDEBUG1 = 4, VDEBUG2 = 5;
-var g_verbosityThsld = VDEBUG2;
+var g_verbosityThsld = VWARN;
 var g_logWithDate = true;
 
 var g_fileWatcher = null;
@@ -88,6 +88,8 @@ function establishFileWatch(handler, filename) {
 }
 
 // https://stackoverflow.com/questions/14626636/how-do-i-shutdown-a-node-js-https-server-immediately
+// Before closing the server and exiting the node.js program,
+// the sockets need to be destroyed.
 function maintainSocketHash(server) {
   // Maintain a hash of all connected sockets.
   server.on('connection', function (socket) {
@@ -165,8 +167,59 @@ function handleRequest(request, response) {
   }
 }
 
-g_httpServer = g_http.createServer(handleRequest);
-g_httpServer.listen(g_port);
-maintainSocketHash(g_httpServer);
+function optValue(opt) {
+   var val = '';
+   try {
+     val = opt.substr(opt.indexOf('=') + 1);
+   }
+   catch (err) {}
+   return val;
+}
 
-log(VWARN, `Server running at http://127.0.0.1:${g_port}/`);
+function processArguments() {
+  var good = true;
+  process.argv.forEach((opt, index, array) => {
+    if (index > 1) {
+      // port=0..65535
+      if (opt.indexOf('port=') == 0) {
+        g_port = (0 + optValue(opt)) % 65536;
+      }
+      // log=0..5
+      else if (opt.indexOf('log=') == 0) {
+        g_verbosityThsld = (0 + optValue(opt)) % 6;
+      }
+      // root=<path-name>
+      else if (opt.indexOf('root=') == 0) {
+        g_rootPath = optValue(opt);
+      }
+      else if (opt.indexOf('help') == 0) {
+        good = false;
+        console.log('Terminal options:');
+        console.log('  port=0..65535   Listen on port number.');
+        console.log('                  defaults to 8081.');
+        console.log('  log=0..5        Set log level.');
+        console.log('                  Defaults to level 2.');
+        console.log('                  0: Remain silent.');
+        console.log('                  1: Show errors only.');
+        console.log('                  2: Include warnings.');
+        console.log('                  3: Include informational.');
+        console.log('                  4: Show debug standard.');
+        console.log('                  5: Show debug detail.');
+        console.log('  root=<path>     Root path to serve files from.');
+      }
+      else {
+        good = false;
+        log(VERROR, `Invalid argument ${opt}`)
+      }
+    }
+  });
+  return good;
+}
+
+if (processArguments()) {
+  g_httpServer = g_http.createServer(handleRequest);
+  g_httpServer.listen(g_port);
+  maintainSocketHash(g_httpServer);
+
+  log(VWARN, `Server running at http://127.0.0.1:${g_port}/`);
+}
