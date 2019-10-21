@@ -5,6 +5,7 @@ var g_url = require('url');
 var g_sockets = {}, g_nextSocketId = 0;
 
 var g_port = 8081;
+var g_host = '127.0.0.1';
 var g_httpServer = null;
 
 const VOFF = 0, VERROR = 1, VWARN = 2, VINFO = 3, VDEBUG1 = 4, VDEBUG2 = 5;
@@ -27,9 +28,15 @@ function log(verbosity, text) {
     if (g_logWithDate) {
       date = new Date().toISOString();
       // Strip the date portion from the time stamp.
-      date = date.substr(1 + date.indexOf('T')) + ' ';
+      date = date.substr(1 + date.indexOf('T'));
     }
-    console.log(`${date}${text}`);
+    var level = verbosity == VERROR ? 'ERR'
+      : verbosity == VWARN ? 'WRN'
+      : verbosity == VINFO ? 'INF'
+      : verbosity == VDEBUG1 ? 'DB1'
+      : verbosity == VDEBUG2 ? 'DB2'
+      : '...';
+    console.log(`${date} ${level} ${text}`);
   }
 }
 
@@ -113,12 +120,19 @@ function destroyOpenSockets() {
   }
 }
 
+function deleteFiles() {
+  log(VINFO, `Deleting index and graph files.`);
+  g_fs.unlinkSync(g_rootPath + INDEXFILENAME);
+  g_fs.unlinkSync(g_rootPath + GRAPHFILENAME);
+}
+
 function exitServer() {
   if (g_fileWatcher) {
     g_fileWatcher.close();
   }
   g_httpServer.close(() => { log(VWARN, 'Server closed.'); });
   destroyOpenSockets();
+  deleteFiles();
   process.exitCode = 1;
 }
 
@@ -136,14 +150,23 @@ function serveFile(filename, response) {
   });
 }
 
+function asStyledHtml(text, refresh) {
+  return '<!DOCTYPE html>'
+  + (refresh ? '<meta http-equiv="refresh" content="2"/>' : '')
+  + '<style>html,body{margin:0 0 0 0;overflow:hidden;background-color:black;color:white;font-family:consolas,monospace}</style>'
+  + '<html><body>'
+  + text
+  + '</body></html>'
+}
+
 function handleRequest(request, response) {
   var pathname = g_url.parse(request.url).pathname;
 
   log(VDEBUG1, `Request for ${pathname} received.`);
 
   if (pathname == "/bye") {
-    response.writeHead(200, {'Content-Type': 'text/plain'});
-    response.write('Bye');
+    response.writeHead(200, {'Content-Type': 'text/html'});
+    response.write(asStyledHtml('Closing Terminal. Bye...', false));
     response.end();
     setTimeout(exitServer, 1000);
   }
@@ -153,7 +176,16 @@ function handleRequest(request, response) {
     response.end();
   }
   else if (pathname == '/') {
-    serveFile(g_rootPath + INDEXFILENAME, response);
+    var indexFile = g_rootPath + INDEXFILENAME;
+    if (statSync(indexFile)) {
+      serveFile(indexFile, response);
+    }
+    else {
+      log(VINFO, `Could not stat ${indexFile}. Sending default index page.`);
+      response.writeHead(200, {'Content-Type': 'text/html'});
+      response.write(asStyledHtml('Waiting for data...', true));
+      response.end();
+    }
   }
   else if (pathname == '/graph.html') {
     var filename = g_rootPath + GRAPHFILENAME;
@@ -184,6 +216,10 @@ function processArguments() {
       if (opt.indexOf('port=') == 0) {
         g_port = (0 + optValue(opt)) % 65536;
       }
+      // port=0..65535
+      if (opt.indexOf('host=') == 0) {
+        g_host = optValue(opt);
+      }
       // log=0..5
       else if (opt.indexOf('log=') == 0) {
         g_verbosityThsld = (0 + optValue(opt)) % 6;
@@ -195,17 +231,19 @@ function processArguments() {
       else if (opt.indexOf('help') == 0) {
         good = false;
         console.log('Terminal options:');
-        console.log('  port=0..65535   Listen on port number.');
-        console.log('                  defaults to 8081.');
-        console.log('  log=0..5        Set log level.');
-        console.log('                  Defaults to level 2.');
-        console.log('                  0: Remain silent.');
-        console.log('                  1: Show errors only.');
-        console.log('                  2: Include warnings.');
-        console.log('                  3: Include informational.');
-        console.log('                  4: Show debug standard.');
-        console.log('                  5: Show debug detail.');
-        console.log('  root=<path>     Root path to serve files from.');
+        console.log('  port=0..65535     Listen on port number.');
+        console.log('                    Defaults to 8081.');
+        console.log('  host=IP|hostname  Host address to listen.');
+        console.log('                    Defauts to 127.0.0.1.');
+        console.log('  log=0..5          Set log level.');
+        console.log('                    Defaults to level 2.');
+        console.log('                    0: Remain silent.');
+        console.log('                    1: Show errors only.');
+        console.log('                    2: Include warnings.');
+        console.log('                    3: Include informational.');
+        console.log('                    4: Show debug standard.');
+        console.log('                    5: Show debug detail.');
+        console.log('  root=<path>       Root path to serve files from.');
       }
       else {
         good = false;
@@ -218,8 +256,8 @@ function processArguments() {
 
 if (processArguments()) {
   g_httpServer = g_http.createServer(handleRequest);
-  g_httpServer.listen(g_port);
+  g_httpServer.listen(g_port, g_host);
   maintainSocketHash(g_httpServer);
 
-  log(VWARN, `Server running at http://127.0.0.1:${g_port}/`);
+  log(VWARN, `Server running at http://${g_host}:${g_port}/`);
 }
