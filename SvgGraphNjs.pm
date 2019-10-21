@@ -188,12 +188,15 @@ sub initialize {
 <!DOCTYPE html>
 <style>html,body{margin:0 0 0 0;overflow:hidden;background-color:black;color:white;font-family:$fontfamily}</style>
 <html><body>
+<!--
 <input id="hold" type="checkbox">HOLD<br>
+-->
 <iframe id="graph" scrolling="no" width="$sw" height="$sh" frameBorder="0" src="./graph.html">
 </iframe>
 <script>
 function askGraphChanged() {
-  if (! document.getElementById("hold").checked) {
+  //if (! document.getElementById("hold").checked) {
+  {
     var xhttp = new XMLHttpRequest();
     xhttp.onreadystatechange = function() {
       if (this.readyState == 4 && this.status == 200) {
