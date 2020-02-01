@@ -6,7 +6,7 @@ use Exporter;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 use File::Copy qw(copy);
 
-$VERSION     = 1.01;
+$VERSION     = 1.02;
 @ISA         = qw(Exporter);
 @EXPORT      = ();
 @EXPORT_OK   = qw(
@@ -408,16 +408,17 @@ sub axis {
   my $du = $u1 - $u0;
   my $j = 0;
   for (my $u = $u0; $u <= $u11; $u += $u2) {
+    plotLine;
+    my $tickH2 = ($j % $uj == 0) ? 1.5 * $tickH : $tickH;
+    if ($horz) {
+      plot($xy1, $y);
+      plot($xy1, $y + ($botm ? -$tickH2 : $tickH2));
+    } else {
+      plot($x, $xy1);
+      plot($x + ($left ? $tickH2 : -$tickH2), $xy1);
+    }
     if ($j % $uj == 0) {
       my $ufs = sprintf($uf, $u);
-      plotLine;
-      if ($horz) {
-        plot($xy1, $y);
-        plot($xy1, $y + ($botm ? -$tickH : $tickH));
-      } else {
-        plot($x, $xy1);
-        plot($x + ($left ? $tickH : -$tickH), $xy1);
-      }
       plotAlpha;
       if ($horz) {
         plot($xy1, $y + ($botm ? textH : -textH()/4));
