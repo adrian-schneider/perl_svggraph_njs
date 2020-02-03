@@ -13,6 +13,7 @@ var g_verbosityThsld = VWARN;
 var g_logWithDate = true;
 
 var g_fileWatcher = null;
+var g_useWatchFile = true;
 var g_timerId = null;
 
 var g_watchedFileChanged = false;
@@ -70,26 +71,37 @@ function rerunDelayedHandler(handler, filename, millis) {
   if (g_timerId) {
     clearTimeout(g_timerId);
   }
-  g_g_timerId = setTimeout(() => { handler(filename); }, millis);
+  g_timerId = setTimeout(() => { handler(filename); }, millis);
 }
 
 function establishFileWatch(handler, filename) {
   if (g_watchedFilename == '') {
-    if (g_fileWatcher) {
-      g_fileWatcher.close();
-    }
     g_watchedFileChanged = false;
     g_watchedFilename = filename;
-    g_fileWatcher = g_fs.watch(filename, (event, eventFilename) => {
-      if (eventFilename) {
-        // Debounce and dealy:
-        // Any file change event occuring within the timeout period
-        // prolongs that timeout period by the same amount.
-        // Only if no further event occurs during that time, the last
-        // event is finally getting handled.
-        rerunDelayedHandler(handler, filename, 200);
-      }
-    });
+    if (g_useWatchFile) {
+      g_fileWatcher = g_fs.watchFile(filename, {interval:500}, (event, eventFilename) => {
+        if (eventFilename) {
+          // Debounce and dealy:
+          // Any file change event occuring within the timeout period
+          // prolongs that timeout period by the same amount.
+          // Only if no further event occurs during that time, the last
+          // event is finally getting handled.
+          rerunDelayedHandler(handler, filename, 200);
+        }
+      });
+    }
+    else {
+      g_fileWatcher = g_fs.watch(filename, (event, eventFilename) => {
+        if (eventFilename) {
+          // Debounce and dealy:
+          // Any file change event occuring within the timeout period
+          // prolongs that timeout period by the same amount.
+          // Only if no further event occurs during that time, the last
+          // event is finally getting handled.
+          rerunDelayedHandler(handler, filename, 200);
+        }
+      });
+    }
     log(VINFO, `File watch established on: ${filename}`);
   }
 }
@@ -127,8 +139,13 @@ function deleteFiles() {
 }
 
 function exitServer() {
-  if (g_fileWatcher) {
-    g_fileWatcher.close();
+  if (g_fileWatcher && ! g_useWatchFile) {
+    if (g_useWatchFile) {
+      fs.unwatchFile(g_watchedFilename);
+    }
+    else {
+      g_fileWatcher.close();
+    }
   }
   g_httpServer.close(() => { log(VWARN, 'Server closed.'); });
   destroyOpenSockets();
@@ -228,6 +245,10 @@ function processArguments() {
       else if (opt.indexOf('root=') == 0) {
         g_rootPath = optValue(opt);
       }
+      // fw=0|1
+      else if (opt.indexOf('wf') == 0) {
+        g_useWatchFile = (optValue(opt) == 0 ? false : true);
+      }
       else if (opt.indexOf('help') == 0) {
         good = false;
         console.log('Terminal options:');
@@ -244,6 +265,8 @@ function processArguments() {
         console.log('                    4: Show debug standard.');
         console.log('                    5: Show debug detail.');
         console.log('  root=<path>       Root path to serve files from.');
+        console.log('  wf=0|1            0: use fs.watch.');
+        console.log('                    1: use fs.watchFile.');
       }
       else {
         good = false;
