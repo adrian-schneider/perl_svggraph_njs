@@ -6,7 +6,7 @@ use Exporter;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 use File::Copy qw(copy);
 
-$VERSION     = 1.02;
+$VERSION     = 2.00;
 @ISA         = qw(Exporter);
 @EXPORT      = ();
 @EXPORT_OK   = qw(
@@ -68,6 +68,7 @@ our $forceinit       = 0;
 our $graphpathname   = "./.svggraph";
 our $indexfilename   = "${graphpathname}/index.html";
 our $graphfilename   = "${graphpathname}/graph.html";
+our $graphwatchname  = "${graphpathname}/graph.watch";
 our $graphspoolname  = "${graphpathname}/graph.tmp";
 our $graphspoolname2 = "${graphpathname}/graph2.tmp";
 our $copydirname     = ".";
@@ -261,6 +262,9 @@ sub endPage {
   }
   rename($graphspoolname, $graphfilename)
     or die "cannot rename $graphspoolname to $graphfilename:\n$!\n";
+  open(my $of, ">", $graphwatchname);
+  print $of '0';
+  close($of);
 }
 
 # Store a copy of the screen in a file.

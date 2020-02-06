@@ -7,7 +7,7 @@ use SvgGraphNjs qw(:Basic :Shapes :Axis);
 
 $SvgGraphNjs::testmode = 1;
 $SvgGraphNjs::forceinit = 1;
-#$SvgGraphNjs::redrawinterval = 2000;
+$SvgGraphNjs::redrawinterval = 2000;
 
 newPage;
 

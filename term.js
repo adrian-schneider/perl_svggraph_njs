@@ -13,7 +13,6 @@ var g_verbosityThsld = VWARN;
 var g_logWithDate = true;
 
 var g_fileWatcher = null;
-var g_useWatchFile = true;
 var g_timerId = null;
 
 var g_watchedFileChanged = false;
@@ -22,6 +21,7 @@ var g_rootPath = './';
 
 const INDEXFILENAME = '.svggraph/index.html';
 const GRAPHFILENAME = '.svggraph/graph.html';
+const WATCHFILENAME = '.svggraph/graph.watch';
 
 function log(verbosity, text) {
   if (verbosity <= g_verbosityThsld) {
@@ -78,30 +78,17 @@ function establishFileWatch(handler, filename) {
   if (g_watchedFilename == '') {
     g_watchedFileChanged = false;
     g_watchedFilename = filename;
-    if (g_useWatchFile) {
-      g_fileWatcher = g_fs.watchFile(filename, {interval:500}, (event, eventFilename) => {
-        if (eventFilename) {
-          // Debounce and dealy:
-          // Any file change event occuring within the timeout period
-          // prolongs that timeout period by the same amount.
-          // Only if no further event occurs during that time, the last
-          // event is finally getting handled.
-          rerunDelayedHandler(handler, filename, 200);
-        }
-      });
-    }
-    else {
-      g_fileWatcher = g_fs.watch(filename, (event, eventFilename) => {
-        if (eventFilename) {
-          // Debounce and dealy:
-          // Any file change event occuring within the timeout period
-          // prolongs that timeout period by the same amount.
-          // Only if no further event occurs during that time, the last
-          // event is finally getting handled.
-          rerunDelayedHandler(handler, filename, 200);
-        }
-      });
-    }
+    g_fileWatcher = g_fs.watch(filename, (event, eventFilename) => {
+      if (eventFilename) {
+        log(VDEBUG2, `File watch event: ${event}`);
+        // Debounce and dealy:
+        // Any file change event occuring within the timeout period
+        // prolongs that timeout period by the same amount.
+        // Only if no further event occurs during that time, the last
+        // event is finally getting handled.
+        rerunDelayedHandler(handler, filename, 200);
+      }
+    });
     log(VINFO, `File watch established on: ${filename}`);
   }
 }
@@ -133,19 +120,15 @@ function destroyOpenSockets() {
 }
 
 function deleteFiles() {
-  log(VINFO, `Deleting index and graph files.`);
+  log(VINFO, `Deleting index, graph and watch files.`);
   g_fs.unlinkSync(g_rootPath + INDEXFILENAME);
   g_fs.unlinkSync(g_rootPath + GRAPHFILENAME);
+  g_fs.unlinkSync(g_rootPath + WATCHFILENAME);
 }
 
 function exitServer() {
-  if (g_fileWatcher && ! g_useWatchFile) {
-    if (g_useWatchFile) {
-      fs.unwatchFile(g_watchedFilename);
-    }
-    else {
-      g_fileWatcher.close();
-    }
+  if (g_fileWatcher) {
+    g_fileWatcher.close();
   }
   g_httpServer.close(() => { log(VWARN, 'Server closed.'); });
   destroyOpenSockets();
@@ -154,9 +137,10 @@ function exitServer() {
 }
 
 function serveFile(filename, response) {
+  log(VDEBUG1, `Serving file ${filename}.`);
   g_fs.readFile(filename, function (err, data) {
     if (err) {
-      log(VERROR, err);
+      log(VERROR, `Error ${err} serving file.`);
       response.writeHead(404, {'Content-Type': 'text/html'});
     }
     else {
@@ -179,7 +163,7 @@ function asStyledHtml(text, refresh) {
 function handleRequest(request, response) {
   var pathname = g_url.parse(request.url).pathname;
 
-  log(VDEBUG1, `Request for ${pathname} received.`);
+  log(VDEBUG1, `Request for path ${pathname} received.`);
 
   if (pathname == "/bye") {
     response.writeHead(200, {'Content-Type': 'text/html'});
@@ -205,9 +189,10 @@ function handleRequest(request, response) {
     }
   }
   else if (pathname == '/graph.html') {
-    var filename = g_rootPath + GRAPHFILENAME;
-    establishFileWatch(processFileChangeHandler, filename);
-    serveFile(filename, response);
+    var watchfilename = g_rootPath + WATCHFILENAME;
+    var graphfilename = g_rootPath + GRAPHFILENAME;
+    establishFileWatch(processFileChangeHandler, watchfilename);
+    serveFile(graphfilename, response);
   }
   else {
     log(VINFO, `Ignoring ${pathname}.`);
@@ -245,10 +230,6 @@ function processArguments() {
       else if (opt.indexOf('root=') == 0) {
         g_rootPath = optValue(opt);
       }
-      // fw=0|1
-      else if (opt.indexOf('wf') == 0) {
-        g_useWatchFile = (optValue(opt) == 0 ? false : true);
-      }
       else if (opt.indexOf('help') == 0) {
         good = false;
         console.log('Terminal options:');
@@ -265,8 +246,6 @@ function processArguments() {
         console.log('                    4: Show debug standard.');
         console.log('                    5: Show debug detail.');
         console.log('  root=<path>       Root path to serve files from.');
-        console.log('  wf=0|1            0: use fs.watch.');
-        console.log('                    1: use fs.watchFile.');
       }
       else {
         good = false;
