@@ -6,17 +6,17 @@ use Exporter;
 use vars qw($VERSION @ISA @EXPORT @EXPORT_OK %EXPORT_TAGS);
 use File::Copy qw(copy);
 
-$VERSION     = 2.00;
+$VERSION     = 2.01;
 @ISA         = qw(Exporter);
 @EXPORT      = ();
 @EXPORT_OK   = qw(
-  plotPoint plotLine plot plotAlpha newPage endPage copyPage setColor setChrSize textW textH
+  plotPoint plotLine plot plotAlpha newPage endPage showPage copyPage setColor setChrSize textW textH
     home text setLineStyle
   ellipticArc ellipse
   axis mapDef mapX mapwX mapY mapwY
 );
 %EXPORT_TAGS = (
-  Basic  => [qw(&plotPoint &plotLine &plot &plotAlpha &newPage &endPage &copyPage &setColor
+  Basic  => [qw(&plotPoint &plotLine &plot &plotAlpha &newPage &endPage &showPage &copyPage &setColor
     &setChrSize &textW &textH &home &text &setLineStyle)]
   , Shapes => [qw(&ellipticArc &ellipse)]
   , Axis => [qw(&axis &mapDef &mapX &mapwX &mapY &mapwY)]
@@ -225,7 +225,7 @@ setInterval(askGraphChanged, $redrawinterval);
 }
 
 # Clear the screen and set alpha mode.
-sub newPage {
+sub newPage_int {
   initvar;
   plotAlpha;
 
@@ -253,18 +253,59 @@ sub newPage {
   }
 }
 
-sub endPage {
-  spool(qq(</svg>));
-  close($graphspool);
-  if (-e $graphfilename) {
-    unlink($graphfilename)
-      or die "cannot delete $graphfilename:\n$!";
-  }
-  rename($graphspoolname, $graphfilename)
-    or die "cannot rename $graphspoolname to $graphfilename:\n$!\n";
+# Write to the watch file to signal the terminal to update the screen.
+sub updateWatch {
   open(my $of, ">", $graphwatchname);
   print $of '0';
   close($of);
+}
+
+# Append a suffix to the spool file to terminate it before it is
+# going to be displayed by the terminal.
+sub closeSpool {
+  my $fh = shift;
+  print $fh "</svg>\n";
+  close($fh);
+}
+
+# Delete the graph file before the spool file is going to be renamed.
+sub deleteGraph {
+  if (-e $graphfilename) {
+    unlink($graphfilename)
+    or die "cannot delete $graphfilename:\n$!";
+  }
+}
+
+# SHow what has been drawn so far on the terminal.
+# Do not call more than abount once per second.
+# Anyway, call endPage at the very end of the drawing process.
+sub showPage {
+  close($graphspool);
+  copy($graphspoolname, $graphspoolname2);
+  open(my $spool2, '>>', $graphspoolname2);
+  closeSpool($spool2);
+  deleteGraph;
+  rename($graphspoolname2, $graphfilename)
+    or die "cannot rename $graphspoolname2 to $graphfilename:\n$!\n";
+  updateWatch;
+  open($graphspool, ">>", "$graphspoolname")
+  or die "cannot reopen $graphspoolname for output:\n$!";
+}
+
+sub newPage {
+  newPage_int;
+  showPage;
+}
+
+# Close the spool file, delete the old graph file and rename
+# the spool file to the graph.
+# Signal completion to the terminal.
+sub endPage {
+  closeSpool($graphspool);
+  deleteGraph;
+  rename($graphspoolname, $graphfilename)
+    or die "cannot rename $graphspoolname to $graphfilename:\n$!\n";
+  updateWatch;
 }
 
 # Store a copy of the screen in a file.

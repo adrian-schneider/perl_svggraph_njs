@@ -7,11 +7,11 @@ use SvgGraphNjs qw(:Basic :Shapes :Axis);
 
 $SvgGraphNjs::testmode = 1;
 $SvgGraphNjs::forceinit = 1;
-$SvgGraphNjs::redrawinterval = 2000;
+#$SvgGraphNjs::redrawinterval = 2000;
 
 newPage;
 
-my $testnumber = 0;
+my $testnumber = 2;
 
 if ($testnumber == 0) {
   plotPoint;
@@ -61,6 +61,32 @@ if ($testnumber == 1) {
   text("Neque porro quisquam est, qui dolorem ipsum, quia dolor sit, amet, consectetur, adipisci velit",  SvgGraphNjs::NEWLINE);
   text("Neque porro quisquam est, qui dolorem ipsum, quia dolor sit, amet, consectetur, adipisci velit",  SvgGraphNjs::NEWLINE);
   text("Neque porro quisquam est, qui dolorem ipsum, quia dolor sit, amet, consectetur, adipisci velit",  SvgGraphNjs::NEWLINE);
+}
+
+if ($testnumber == 2) {
+  sleep 2;
+
+  setLineStyle(2);
+  ellipticArc(300, 300, 200, 200, 0.0, 0.8, 30, 1);
+  showPage;
+  sleep 2;
+
+  setLineStyle(0);
+  ellipticArc(350, 300, 200, 200, 0.0, 0.8, 30, 1);
+  showPage;
+  sleep 2;
+
+  if (1) {
+    for (my $j = 0; $j < 5; $j++) {
+      plotPoint;
+      for (my $i = 0; $i < 200; $i++) {
+        plot(200 + rand(200), 300 + rand(200));
+      }
+
+      showPage;
+      sleep 1;
+    }
+  }
 }
 
 endPage;
